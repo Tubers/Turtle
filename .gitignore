@@ -338,3 +338,14 @@ ASALocalRun/
 
 # BeatPulse healthcheck temp database
 healthchecksdb
+/Space Engineers/MDK/Bootstrapper.cs
+/Space Engineers/MDK/MDK.options.props
+/Space Engineers/MDK/MDK.paths.props
+/Space Engineers/Instructions.readme
+/Space Engineers/thumb.png
+/Station Operator/thumb.png
+/Station Operator/Station Operator.csproj
+/Station Operator/MDK/MDK.paths.props
+/Station Operator/MDK/MDK.options.props
+/Station Operator/Instructions.readme
+/Turtle.sln
