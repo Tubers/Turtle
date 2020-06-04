@@ -21,12 +21,19 @@ namespace IngameScript
 {
     partial class Program : MyGridProgram
     {
+        #region mdk macros
+        private const string Deployment = "$MDK_DATE$, $MDK_TIME$";
+        #endregion
+
         MyIni _ini = new MyIni();
         private bool alreadyRun = false;
 
         //IGC
-        string _turtleTag = "TURTLE TAG";
-        IMyBroadcastListener _turtleListener;
+        string _turtleInit = "TURTLE INIT";
+        IMyBroadcastListener _turtleListenerInit;
+
+        string _turtleMap = "TURTLE MAP";
+        IMyBroadcastListener _turtleListenerMap;
 
         //Basis
         Vector3D _basisVecA, _basisVecB, _basisVecUp, _origin;
@@ -74,8 +81,8 @@ namespace IngameScript
             }
 
             //IGC
-            _turtleListener = IGC.RegisterBroadcastListener(_turtleTag);
-            _turtleListener.SetMessageCallback(_turtleTag);
+            _turtleListenerInit = IGC.RegisterBroadcastListener(_turtleInit);
+            _turtleListenerInit.SetMessageCallback(_turtleInit);
 
             Runtime.UpdateFrequency |= UpdateFrequency.Update100;
         }
@@ -99,10 +106,10 @@ namespace IngameScript
 
         private void BroadcastBasis()
         {
-            IGC.SendBroadcastMessage(_turtleTag, "A;"+_basisVecA);
-            IGC.SendBroadcastMessage(_turtleTag, "B;"+_basisVecB);
-            IGC.SendBroadcastMessage(_turtleTag, "Up;"+_basisVecUp);
-            IGC.SendBroadcastMessage(_turtleTag, "origin;"+_origin);
+            IGC.SendBroadcastMessage(_turtleInit, "A;"+_basisVecA);
+            IGC.SendBroadcastMessage(_turtleInit, "B;"+_basisVecB);
+            IGC.SendBroadcastMessage(_turtleInit, "Up;"+_basisVecUp);
+            IGC.SendBroadcastMessage(_turtleInit, "Origin;"+_origin);
         }
     }
 }
