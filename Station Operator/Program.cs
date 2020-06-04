@@ -88,7 +88,7 @@ namespace IngameScript
             _turtleListener = IGC.RegisterBroadcastListener(_turtleTag);
             _turtleListener.SetMessageCallback(_turtleTag);
 
-            Runtime.UpdateFrequency |= UpdateFrequency.Once;
+            Runtime.UpdateFrequency |= UpdateFrequency.Update100;
         }
 
         public void Save()
@@ -105,8 +105,15 @@ namespace IngameScript
 
         public void Main(string argument, UpdateType updateSource)
         {
-            
+            BroadcastBasis();
         }
 
+        private void BroadcastBasis()
+        {
+            IGC.SendBroadcastMessage(_turtleTag, "A;"+_basisVecA);
+            IGC.SendBroadcastMessage(_turtleTag, "B;"+_basisVecB);
+            IGC.SendBroadcastMessage(_turtleTag, "Up;"+_basisVecUp);
+            IGC.SendBroadcastMessage(_turtleTag, "origin;"+_origin);
+        }
     }
 }

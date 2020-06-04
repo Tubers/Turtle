@@ -349,3 +349,5 @@ healthchecksdb
 /Station Operator/MDK/MDK.options.props
 /Station Operator/Instructions.readme
 /Turtle.sln
+/Space Engineers/Space Engineers.csproj
+/Station Operator/MDK/Bootstrapper.cs
