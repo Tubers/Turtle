@@ -20,18 +20,7 @@ using VRageMath;
 namespace IngameScript
 {
     partial class Program : MyGridProgram
-    { 
-        /*
-         
-          Custom Data of programmable block
-          [Basis]
-          A=A
-          B=B
-          Up=Up
-          Origin=Origin
-
-        */
-
+    {
         MyIni _ini = new MyIni();
         private bool alreadyRun = false;
 

@@ -36,7 +36,8 @@ namespace IngameScript
         MyIni _ini = new MyIni();
 
         List<IMyTerminalBlock> blockList = new List<IMyTerminalBlock>();
-        
+        StringBuilder messageBuilder = new StringBuilder();
+
         public Program()
         {
             Echo("Construct");
@@ -60,7 +61,6 @@ namespace IngameScript
 
         public void Save()
         {
-            Echo("Save");
             // save program state variables
             _ini.Clear();
             //_ini.Set("demo", "intValue", _intValue);
@@ -71,7 +71,7 @@ namespace IngameScript
         {
             string data = "";
 
-            //IGC.SendBroadcastMessage(_turtleTag, data);
+            
 
             if ((updateSource & UpdateType.IGC) > 0)
             {
@@ -83,10 +83,12 @@ namespace IngameScript
                     {
                         if (message.Data is string)
                         {
-                            data = message.Data.ToString();
+                            messageBuilder.Append(message.Data.ToString()+"\n");
                         }
                     }
                 }
+
+                Echo(messageBuilder.ToString());
             }
 
             if ((updateSource & UpdateType.Once) == UpdateType.Once)
