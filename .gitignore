@@ -351,3 +351,10 @@ healthchecksdb
 /Turtle.sln
 /Space Engineers/Space Engineers.csproj
 /Station Operator/MDK/Bootstrapper.cs
+/Test/Test.csproj
+/Test/thumb.png
+/Test/Program.cs
+/Test/MDK/MDK.paths.props
+/Test/MDK/MDK.options.props
+/Test/MDK/Bootstrapper.cs
+/Test/Instructions.readme
