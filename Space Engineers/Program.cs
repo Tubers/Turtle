@@ -23,150 +23,136 @@ namespace IngameScript
 {
     partial class Program : MyGridProgram
     {
-        #region mdk macros
-        private const string Deployment = "$MDK_DATE$, $MDK_TIME$";
-        #endregion
-
-        Vector3D _basisVecA, _basisVecB, _basisVecUp, _origin;
-
-            //IGC
-        string _turtleInit = "TURTLE INIT";
-        IMyBroadcastListener _turtleListenerInit;
-        string _turtleMap = "TURTLE MAP";
-        IMyBroadcastListener _turtleListenerMap;
-            //state
-        //Vector3D _turtleLocation; // grid coord 
-        //Vector3D _turtleFacing;   // yaw point
-            //flags
-        bool _suspended = false;
-        bool _initialized = false;
-            //hardware
-        IMyGyro gyro;
-        IMyShipConnector connector;
-        IMyRemoteControl remote; 
-
-
-
-        IEnumerator<bool> _stateMachine;
-        IEnumerator<int> _subState;
-
+        enum Direction : int
+        {
+            APOS = 0,
+            ANEG = 1,
+            BPOS = 2,
+            BNEG = 3,
+            UP = 4,
+            DOWN = 5
+        }
+        //world
+        Vector3D[] _basis = new Vector3D[6];
+            Vector3D _origin;
+        //IGC
+            string _turtleInit = "TURTLE INIT";
+            IMyBroadcastListener _turtleListenerInit;
+            string _turtleMap = "TURTLE MAP";
+            IMyBroadcastListener _turtleListenerMap;
+        //state
+            //Vector3D _turtleLocation; // grid coord 
+            //Vector3D _turtleFacing;   // yaw point
+            Direction _rotationGoal;
+        //flags
+            bool _suspended = false;
+            bool _initialized = false;
+        //hardware
+            IMyGyro gyro;
+            IMyShipConnector connector;
+            IMyRemoteControl remote; 
+        //control
+            IEnumerator<bool> _stateMachine;
+            IEnumerator<int> _subState;
 
         List<IMyTerminalBlock> _blockList = new List<IMyTerminalBlock>();
         StringBuilder _messageBuilder = new StringBuilder();
+        int runCount = 0;
 
         public void Main(string argument, UpdateType updateSource)
         {
+
+            if ((updateSource & UpdateType.Terminal) > 0)
+            {
+                gyro.Yaw = 0;
+                gyro.GyroOverride = false;
+                _suspended = true;
+            }
             //receive broadcasts
             if ((updateSource & UpdateType.IGC) > 0)
             {
-                HandleMessageInit(updateSource);
-                HandleMessageMap(updateSource);
-                Echo(_messageBuilder.ToString());
+                HandleMessageInit();
+                HandleMessageMap();
+                Me.CustomData += _messageBuilder.ToString();
+                _messageBuilder.Clear();
             }
 
             // run normally
             if ((updateSource & UpdateType.Once) == UpdateType.Once)
             {
+                
+                runCount++;
                 if (!_suspended & _initialized)
                 {
-                    RunStateMachine(); 
+                    _messageBuilder.Append("\tRUN:"+runCount+"\n");
+                    if (!_stateMachine.MoveNext())
+                    {
+                        _stateMachine.Dispose();
+                        _stateMachine = null;
+                    }
                 }
                 Runtime.UpdateFrequency |= UpdateFrequency.Once;
             }
-
-            _messageBuilder.Clear();
-        }
-
-        public void RunStateMachine()
-        {
-            if (_stateMachine != null)
+            if (runCount < 15 | ((runCount % 60) == 0 & (Me.CustomData.Length < 2000)))
             {
-                if (!_stateMachine.MoveNext())
-                {
-                    _stateMachine.Dispose();
-                    _stateMachine = null;
-                }
+                Me.CustomData += "\n"+_messageBuilder.ToString();
             }
+            _messageBuilder.Clear();
+            
         }
 
         public IEnumerator<bool> Run()
         {
-            int programCounter = 0;
-            while (true) //main loop
+            var _programCounter = 0;
+            //main loop
+            while (true) 
             {
-                while (programCounter == 0)
+                _messageBuilder.Append("inside Main while.\n");
+                while (_programCounter == 0)
                 {
-                    programCounter += wrapper(test);
+                    _rotationGoal = Direction.BNEG;
+                    _programCounter += Wrapper(Rotate); 
                     yield return true;
                 }
 
-                Echo("Onion\n");
+
                 yield return true;
             }
+        }
+
+        public IEnumerator<int> Rotate()
+        {
+            //init
             
-        }
-
-
-        public int wrapper(Func<IEnumerator<int>> funcName)
-        {
-            if (_subState == null)
-            {
-                _subState = funcName();
-            }
-            else
-            {
-                if (!_subState.MoveNext())
-                {
-                    _subState.Dispose();
-                    _subState = null;
-                    return 1;
-                }
-            }
-
-            return 0;
-        }
-        public IEnumerator<int> test()
-        {
-            int count = 0;
-            while (count<=100)
-            {
-                Echo(count++ +" Within test.\n");
-                yield return 0;
-            }
-            yield return 1;
-        }
-
-        public void rotate(IMyGyro gyro, Vector3D rotationGoal)
-        {
-            Double heuristic = 200;
-            bool atRotation = false;
-            bool honing = false;
+            var rot = remote.CenterOfMass + (5 * _basis[(int) _rotationGoal]);
+            Vector3D facePos;
+            float squaredDist;
+            float greed = 200.0f;
             bool reversed = false;
-
-            Vector3D facePos = connector.GetPosition();
-            float squaredDist = (float)(rotationGoal - facePos).LengthSquared();
-
-            if (!atRotation)
+            bool honing = false;
+            gyro.GyroOverride = true;
+            gyro.Yaw = 0.3f;
+            while (true)
             {
-                //Echo("heuristic \n"+heuristic.ToString());
-                //Echo("dist \n" + squaredDist.ToString());
-                if (squaredDist < heuristic)
+                facePos = connector.GetPosition();
+                squaredDist = (float) (rot - facePos).LengthSquared();
+                if (squaredDist < greed)
                 {
-                    if (heuristic != 200)
+                    if (greed != 200)
                     {
                         honing = true;
-                        gyro.Yaw = gyro.Yaw * Math.Min((squaredDist / 45.0f), 1.2f);
                     }
-                    heuristic = squaredDist;
+                    greed = squaredDist;
                 }
                 else
                 {
-                    if (honing)
+                    if (squaredDist == greed)
+                    {}
+                    else if (honing)
                     {
                         gyro.Yaw = 0;
                         gyro.GyroOverride = false;
-                        atRotation = true;
-                        //Echo("Eureka");
+                        yield return 1;
                     }
                     else
                     {
@@ -177,38 +163,57 @@ namespace IngameScript
                         }
                     }
                 }
+                yield return 0;
             }
         }
 
-        
-        private void HandleMessageMap(UpdateType updateSource)
+        public int Wrapper(Func<IEnumerator<int>> funcName)
+        {
+            _messageBuilder.Append("inside wrapper while.\n");
+            if (_subState == null)
+            {
+                _subState = funcName();
+            }
+            if (!_subState.MoveNext() | _subState.Current == 1)
+            {
+                _subState.Dispose();
+                _subState = null;
+                return 1;
+            }
+            else
+                return 0;
+        }
+
+        private void HandleMessageMap()
         {
             while (_initialized & _turtleListenerMap.HasPendingMessage)
             {
-                MyIGCMessage mapString = _turtleListenerMap.AcceptMessage();
+                var mapString = _turtleListenerMap.AcceptMessage();
                 _messageBuilder.Append("Map update received.\n");
             }
             
         }
-
-        private void HandleMessageInit(UpdateType message)
+        private void HandleMessageInit()
         {
             while (!_initialized | _turtleListenerInit.HasPendingMessage)
             {
-                MyIGCMessage vectorString = _turtleListenerInit.AcceptMessage();
+                var vectorString = _turtleListenerInit.AcceptMessage();
                 string[] split = vectorString.Data.ToString().Split(';');
                 var name = split[0];
                 var data = split[1];
                 switch (name)
                 {
                     case "A":
-                        Vector3D.TryParse(data, out _basisVecA);
+                        Vector3D.TryParse(data, out _basis[0]);
+                        _basis[1] = -_basis[0];
                         break;
                     case "B":
-                        Vector3D.TryParse(data, out _basisVecB);
+                        Vector3D.TryParse(data, out _basis[2]);
+                        _basis[3] = -_basis[2];
                         break;
                     case "Up":
-                        Vector3D.TryParse(data, out _basisVecUp);
+                        Vector3D.TryParse(data, out _basis[4]);
+                        _basis[5] = -_basis[4];
                         break;
                     case "Origin":
                         Vector3D.TryParse(data, out _origin);
@@ -216,16 +221,17 @@ namespace IngameScript
                 }
             }
             if (Vector3D.IsZero(_origin)
-                | Vector3D.IsZero(_basisVecA)
-                | Vector3D.IsZero(_basisVecB)
-                | Vector3D.IsZero(_basisVecUp))
+                | Vector3D.IsZero(_basis[0])
+                | Vector3D.IsZero(_basis[2])
+                | Vector3D.IsZero(_basis[4]))
             {
                 _initialized = false;
+                _messageBuilder.Append("Could not orient.\nFailed to initialize.\n");
             }
             else
             {
                 _initialized = true;
-                _messageBuilder.Append("Successfully oriented.\nInitialized.");
+                _messageBuilder.Append("Successfully oriented.\nInitialized.\n");
                 _turtleListenerInit.DisableMessageCallback();
             }
         }
@@ -249,34 +255,46 @@ namespace IngameScript
             // load program state
             if (_ini.TryParse(Storage))
             {
-                Vector3D.TryParse(_ini.Get("Basis", "A").ToString(), out _basisVecA);
-                Vector3D.TryParse(_ini.Get("Basis", "B").ToString(), out _basisVecB);
-                Vector3D.TryParse(_ini.Get("Basis", "Up").ToString(), out _basisVecUp);
+                Vector3D.TryParse(_ini.Get("Basis", "A").ToString(), out _basis[0]);
+                _basis[1] = -_basis[0];
+                Vector3D.TryParse(_ini.Get("Basis", "B").ToString(), out _basis[2]);
+                _basis[3] = -_basis[2];
+                Vector3D.TryParse(_ini.Get("Basis", "Up").ToString(), out _basis[4]);
+                _basis[5] = -_basis[4];
                 Vector3D.TryParse(_ini.Get("Basis", "Origin").ToString(), out _origin);
                 _initialized = true;
-                _messageBuilder.Append("Storage loaded.\nInitialized.");
+                _messageBuilder.Append("Storage loaded.\nInitialized.\n");
             }
             else
             {
-                _basisVecA = new Vector3D(0, 0, 0);
-                _basisVecB = new Vector3D(0, 0, 0);
-                _basisVecUp = new Vector3D(0, 0, 0);
+                _basis[0] = new Vector3D(0, 0, 0);
+                _basis[2] = new Vector3D(0, 0, 0);
+                _basis[4] = new Vector3D(0, 0, 0);
                 _origin = new Vector3D(0, 0, 0);
             }
 
-            Echo(_messageBuilder.ToString());
+            // custom data reset - log info
+            Me.CustomData = "\t\tPROGRAM LOG:\n\n"+_messageBuilder.ToString();
+            _messageBuilder.Clear();
             _stateMachine = Run();
             Runtime.UpdateFrequency |= UpdateFrequency.Once;
         }
 
         public void Save()
         {
-            _ini.Clear();
-            _ini.Set("Basis", "A", _basisVecA.ToString());
-            _ini.Set("Basis", "B", _basisVecB.ToString());
-            _ini.Set("Basis", "Up", _basisVecUp.ToString());
-            _ini.Set("Basis", "Origin", _origin.ToString());
-            Storage = _ini.ToString();
+            if (_initialized)
+            {
+                _ini.Clear();
+                _ini.Set("Basis", "A", _basis[0].ToString());
+                _basis[1] = -_basis[0];
+                _ini.Set("Basis", "B", _basis[2].ToString());
+                _basis[3] = -_basis[2];
+                _ini.Set("Basis", "Up", _basis[4].ToString());
+                _basis[5] = -_basis[4];
+                _ini.Set("Basis", "Origin", _origin.ToString());
+                Storage = _ini.ToString();
+                Me.CustomData += _messageBuilder.ToString();
+            }
         }
 
     }
