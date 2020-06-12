@@ -38,9 +38,7 @@ namespace IngameScript
         //IGC
             string _turtleInit = "TURTLE INIT";
             IMyBroadcastListener _turtleListenerInit;
-            string _turtleMap = "TURTLE MAP";
-            IMyBroadcastListener _turtleListenerMap;
-        //state
+            //state
             //Vector3D _turtleLocation; // grid coord 
             //Vector3D _turtleFacing;   // yaw point
             Direction _rotationGoal;
@@ -58,10 +56,9 @@ namespace IngameScript
         List<IMyTerminalBlock> _blockList = new List<IMyTerminalBlock>();
         StringBuilder _messageBuilder = new StringBuilder();
         int runCount = 0;
-
         public void Main(string argument, UpdateType updateSource)
         {
-
+           
             if ((updateSource & UpdateType.Terminal) > 0)
             {
                 gyro.Yaw = 0;
@@ -71,8 +68,8 @@ namespace IngameScript
             //receive broadcasts
             if ((updateSource & UpdateType.IGC) > 0)
             {
+                //unicast state set messages
                 HandleMessageInit();
-                HandleMessageMap();
                 Me.CustomData += _messageBuilder.ToString();
                 _messageBuilder.Clear();
             }
@@ -80,15 +77,15 @@ namespace IngameScript
             // run normally
             if ((updateSource & UpdateType.Once) == UpdateType.Once)
             {
-                
                 runCount++;
-                if (!_suspended & _initialized)
+                if (!_suspended & _initialized & _stateMachine != null)
                 {
                     _messageBuilder.Append("\tRUN:"+runCount+"\n");
                     if (!_stateMachine.MoveNext())
                     {
                         _stateMachine.Dispose();
                         _stateMachine = null;
+                        // send unicast back to turtle operator
                     }
                 }
                 Runtime.UpdateFrequency |= UpdateFrequency.Once;
@@ -98,7 +95,6 @@ namespace IngameScript
                 Me.CustomData += "\n"+_messageBuilder.ToString();
             }
             _messageBuilder.Clear();
-            
         }
 
         public IEnumerator<bool> Run()
@@ -114,10 +110,13 @@ namespace IngameScript
                     _programCounter += Wrapper(Rotate); 
                     yield return true;
                 }
-
-
                 yield return true;
             }
+        }
+
+        public IEnumerator<int> Move()
+        {
+            yield return 1;
         }
 
         public IEnumerator<int> Rotate()
@@ -183,16 +182,6 @@ namespace IngameScript
             else
                 return 0;
         }
-
-        private void HandleMessageMap()
-        {
-            while (_initialized & _turtleListenerMap.HasPendingMessage)
-            {
-                var mapString = _turtleListenerMap.AcceptMessage();
-                _messageBuilder.Append("Map update received.\n");
-            }
-            
-        }
         private void HandleMessageInit()
         {
             while (!_initialized | _turtleListenerInit.HasPendingMessage)
@@ -247,9 +236,6 @@ namespace IngameScript
             //IGC
             _turtleListenerInit = IGC.RegisterBroadcastListener(_turtleInit);
             _turtleListenerInit.SetMessageCallback(_turtleInit);
-
-            _turtleListenerMap = IGC.RegisterBroadcastListener(_turtleMap);
-            _turtleListenerMap.SetMessageCallback(_turtleMap);
             _messageBuilder.Append("IGC loaded.\n");
 
             // load program state
