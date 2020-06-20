@@ -32,15 +32,16 @@ namespace IngameScript
             UP = 4,
             DOWN = 5
         }
+
+        
         //world
         Vector3D[] _basis = new Vector3D[6];
             Vector3D _origin;
         //IGC
             string _turtleInit = "TURTLE INIT";
             IMyBroadcastListener _turtleListenerInit;
-            //state
+        //state
             //Vector3D _turtleLocation; // grid coord 
-            //Vector3D _turtleFacing;   // yaw point
             Direction _rotationGoal;
         //flags
             bool _suspended = false;
@@ -50,138 +51,169 @@ namespace IngameScript
             IMyShipConnector connector;
             IMyRemoteControl remote; 
         //control
-            IEnumerator<bool> _stateMachine;
-            IEnumerator<int> _subState;
-
-        List<IMyTerminalBlock> _blockList = new List<IMyTerminalBlock>();
-        StringBuilder _messageBuilder = new StringBuilder();
-        int runCount = 0;
+            IEnumerator<int> _stateMachine;
+            Queue<> _actions = new Queue<>();
+        // util
+            StringBuilder _messageBuilder = new StringBuilder();
+            private MyIni _ini = new MyIni();
+            int _runCount = 0;
+        public Program()
+        {
+            //hardware
+            remote = GridTerminalSystem.GetBlockWithName("Remote [t]") as IMyRemoteControl;
+            gyro = GridTerminalSystem.GetBlockWithName("Gyroscope [t]") as IMyGyro;
+            connector = GridTerminalSystem.GetBlockWithName("Connector [t]") as IMyShipConnector;
+            _messageBuilder.Append("Hardware located.\n");
+            //IGC
+            IGC.UnicastListener.SetMessageCallback();
+            _turtleListenerInit = IGC.RegisterBroadcastListener(_turtleInit);
+            _turtleListenerInit.SetMessageCallback(_turtleInit);
+            _messageBuilder.Append("IGC loaded.\n");
+            // load program state
+            if (_ini.TryParse(Storage))
+            {
+                Vector3D.TryParse(_ini.Get("Basis", "A").ToString(), out _basis[0]);
+                _basis[1] = -_basis[0];
+                Vector3D.TryParse(_ini.Get("Basis", "B").ToString(), out _basis[2]);
+                _basis[3] = -_basis[2];
+                Vector3D.TryParse(_ini.Get("Basis", "Up").ToString(), out _basis[4]);
+                _basis[5] = -_basis[4];
+                Vector3D.TryParse(_ini.Get("Basis", "Origin").ToString(), out _origin);
+                _initialized = true;
+                _messageBuilder.Append("Storage loaded.\nInitialized.\n");
+            }
+            // custom data reset - log info
+            Me.CustomData = "\t\tPROGRAM LOG:\n\n" + _messageBuilder;
+            Runtime.UpdateFrequency |= UpdateFrequency.Once;
+        }
+        public void Save()
+        {
+            if (areVectorsValid())
+            {
+                _ini.Clear();
+                _ini.Set("Basis", "A", _basis[0].ToString());
+                _basis[1] = -_basis[0];
+                _ini.Set("Basis", "B", _basis[2].ToString());
+                _basis[3] = -_basis[2];
+                _ini.Set("Basis", "Up", _basis[4].ToString());
+                _basis[5] = -_basis[4];
+                _ini.Set("Basis", "Origin", _origin.ToString());
+                Storage = _ini.ToString();
+                Me.CustomData += _messageBuilder.ToString();
+            }
+        }
         public void Main(string argument, UpdateType updateSource)
         {
-           
-            if ((updateSource & UpdateType.Terminal) > 0)
-            {
-                gyro.Yaw = 0;
-                gyro.GyroOverride = false;
-                _suspended = true;
-            }
+            _runCount++;
             //receive broadcasts
-            if ((updateSource & UpdateType.IGC) > 0)
+            if ((updateSource & UpdateType.IGC) == UpdateType.IGC)
             {
                 //unicast state set messages
-                HandleMessageInit();
-                Me.CustomData += _messageBuilder.ToString();
-                _messageBuilder.Clear();
+                if (IGC.UnicastListener.HasPendingMessage)
+                {
+                    var message = IGC.UnicastListener.AcceptMessage();
+                    //enqueue a method
+                }else if (_turtleListenerInit.IsActive)
+                {
+                    HandleMessageInit();
+                }
             }
-
-            // run normally
+            //
+            if ((updateSource & UpdateType.Trigger) == UpdateType.Trigger)
+            {
+                // sensor abrupt stop set _suspend
+            }
+            //
             if ((updateSource & UpdateType.Once) == UpdateType.Once)
             {
-                runCount++;
-                if (!_suspended & _initialized & _stateMachine != null)
+                Runtime.UpdateFrequency |= UpdateFrequency.Once;
+                if (!_suspended & _initialized)
                 {
-                    _messageBuilder.Append("\tRUN:"+runCount+"\n");
-                    if (!_stateMachine.MoveNext())
+                    _messageBuilder.Append("\tRUN: \n");
+
+                    if (_stateMachine == null & _actions.Count>0)
+                    {
+                        var nextAction = _actions.Peek();
+                        _stateMachine = nextAction();
+
+                    }
+                    else if (_stateMachine == null & _actions.Count==0)
+                    {
+                        _stateMachine = Idle();
+                    }
+                    if (!_stateMachine.MoveNext() | _stateMachine.Current == 1)
                     {
                         _stateMachine.Dispose();
                         _stateMachine = null;
-                        // send unicast back to turtle operator
+                        _actions.Dequeue();
                     }
-                }
-                Runtime.UpdateFrequency |= UpdateFrequency.Once;
+
+                }//!_suspended & _initialized
             }
-            if (runCount < 15 | ((runCount % 60) == 0 & (Me.CustomData.Length < 2000)))
+
+            
+
+
+            if (_runCount < 15 | ((_runCount % 60) == 0 & (Me.CustomData.Length < 2000)))
             {
                 Me.CustomData += "\n"+_messageBuilder.ToString();
             }
             _messageBuilder.Clear();
         }
 
-        public IEnumerator<bool> Run()
+        public IEnumerator<int> Idle(Vector3D data)
         {
-            var _programCounter = 0;
-            //main loop
-            while (true) 
+            // turn off hover thrusters
+            while (_actions.Count == 0)
             {
-                _messageBuilder.Append("inside Main while.\n");
-                while (_programCounter == 0)
-                {
-                    _rotationGoal = Direction.BNEG;
-                    _programCounter += Wrapper(Rotate); 
-                    yield return true;
-                }
-                yield return true;
+                yield return 0;
             }
+            // turn back on hover thrusters
+            yield return 1;
         }
-
-        public IEnumerator<int> Move()
+        public IEnumerator<int> Move(Vector3D data)
         {
+            yield return 0;
+            // ensure move successful 
+            // tell turtle operator of move
             yield return 1;
         }
 
-        public IEnumerator<int> Rotate()
+        public IEnumerator<int> Rotate(Vector3D data)
         {
-            //init
-            
-            var rot = remote.CenterOfMass + (5 * _basis[(int) _rotationGoal]);
-            Vector3D facePos;
-            float squaredDist;
-            float greed = 200.0f;
-            bool reversed = false;
-            bool honing = false;
             gyro.GyroOverride = true;
             gyro.Yaw = 0.3f;
+            Vector3D direc;
+            double prog = -1;
+            double prevProg;
+            bool reversed = false;
+            var rot= _basis[(int)_rotationGoal];
+            yield return 0;
+
             while (true)
             {
-                facePos = connector.GetPosition();
-                squaredDist = (float) (rot - facePos).LengthSquared();
-                if (squaredDist < greed)
+                prevProg = prog;
+                direc = Me.CubeGrid.WorldMatrix.Forward;
+                prog = Vector3D.Dot(direc, rot);
+                if (prog >= 0.99)
                 {
-                    if (greed != 200)
-                    {
-                        honing = true;
-                    }
-                    greed = squaredDist;
+                    gyro.Yaw = 0;
+                    gyro.GyroOverride = false;
+                    yield return 1;
                 }
-                else
+                //adjust
+                gyro.Yaw = (0.3f + (0.1f * (float) (1 - prog))) * (gyro.Yaw < 0 ? -1 : 1);
+                if (prog - prevProg < 0 & !reversed)
                 {
-                    if (squaredDist == greed)
-                    {}
-                    else if (honing)
-                    {
-                        gyro.Yaw = 0;
-                        gyro.GyroOverride = false;
-                        yield return 1;
-                    }
-                    else
-                    {
-                        if (!reversed)
-                        {
-                            gyro.Yaw = -gyro.Yaw;
-                            reversed = true;
-                        }
-                    }
+                    gyro.Yaw *= -1;
+                    reversed = true;
                 }
                 yield return 0;
             }
         }
 
-        public int Wrapper(Func<IEnumerator<int>> funcName)
-        {
-            _messageBuilder.Append("inside wrapper while.\n");
-            if (_subState == null)
-            {
-                _subState = funcName();
-            }
-            if (!_subState.MoveNext() | _subState.Current == 1)
-            {
-                _subState.Dispose();
-                _subState = null;
-                return 1;
-            }
-            else
-                return 0;
-        }
+
+
         private void HandleMessageInit()
         {
             while (!_initialized | _turtleListenerInit.HasPendingMessage)
@@ -209,10 +241,7 @@ namespace IngameScript
                         break;
                 }
             }
-            if (Vector3D.IsZero(_origin)
-                | Vector3D.IsZero(_basis[0])
-                | Vector3D.IsZero(_basis[2])
-                | Vector3D.IsZero(_basis[4]))
+            if (areVectorsValid())
             {
                 _initialized = false;
                 _messageBuilder.Append("Could not orient.\nFailed to initialize.\n");
@@ -225,63 +254,15 @@ namespace IngameScript
             }
         }
 
-        MyIni _ini = new MyIni();
-        public Program()
+        public bool areVectorsValid()
         {
-            //hardware
-            remote = GridTerminalSystem.GetBlockWithName("Remote [t]") as IMyRemoteControl;
-            gyro = GridTerminalSystem.GetBlockWithName("Gyroscope [t]") as IMyGyro;
-            connector = GridTerminalSystem.GetBlockWithName("Connector [t]") as IMyShipConnector;
-            _messageBuilder.Append("Hardware located.\n");
-            //IGC
-            _turtleListenerInit = IGC.RegisterBroadcastListener(_turtleInit);
-            _turtleListenerInit.SetMessageCallback(_turtleInit);
-            _messageBuilder.Append("IGC loaded.\n");
-
-            // load program state
-            if (_ini.TryParse(Storage))
-            {
-                Vector3D.TryParse(_ini.Get("Basis", "A").ToString(), out _basis[0]);
-                _basis[1] = -_basis[0];
-                Vector3D.TryParse(_ini.Get("Basis", "B").ToString(), out _basis[2]);
-                _basis[3] = -_basis[2];
-                Vector3D.TryParse(_ini.Get("Basis", "Up").ToString(), out _basis[4]);
-                _basis[5] = -_basis[4];
-                Vector3D.TryParse(_ini.Get("Basis", "Origin").ToString(), out _origin);
-                _initialized = true;
-                _messageBuilder.Append("Storage loaded.\nInitialized.\n");
-            }
-            else
-            {
-                _basis[0] = new Vector3D(0, 0, 0);
-                _basis[2] = new Vector3D(0, 0, 0);
-                _basis[4] = new Vector3D(0, 0, 0);
-                _origin = new Vector3D(0, 0, 0);
-            }
-
-            // custom data reset - log info
-            Me.CustomData = "\t\tPROGRAM LOG:\n\n"+_messageBuilder.ToString();
-            _messageBuilder.Clear();
-            _stateMachine = Run();
-            Runtime.UpdateFrequency |= UpdateFrequency.Once;
+            return
+                   _origin!=null & Vector3D.IsZero(_origin) &
+                   _basis[0]!=null & Vector3D.IsZero(_basis[0]) &  
+                   _basis[2]!=null & Vector3D.IsZero(_basis[2]) &
+                   _basis[4]!=null & Vector3D.IsZero(_basis[4]);
         }
-
-        public void Save()
-        {
-            if (_initialized)
-            {
-                _ini.Clear();
-                _ini.Set("Basis", "A", _basis[0].ToString());
-                _basis[1] = -_basis[0];
-                _ini.Set("Basis", "B", _basis[2].ToString());
-                _basis[3] = -_basis[2];
-                _ini.Set("Basis", "Up", _basis[4].ToString());
-                _basis[5] = -_basis[4];
-                _ini.Set("Basis", "Origin", _origin.ToString());
-                Storage = _ini.ToString();
-                Me.CustomData += _messageBuilder.ToString();
-            }
-        }
-
+        
+        
     }
 }

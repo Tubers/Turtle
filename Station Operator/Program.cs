@@ -77,7 +77,12 @@ namespace IngameScript
                  _basisVecA = Vector3D.Normalize(pointA - _origin);
                  _basisVecB = Vector3D.Normalize(pointB - _origin);
                  _basisVecUp = Vector3D.Normalize(pointUp - _origin);
-                 alreadyRun = true;
+
+                 _basisVecA = Me.CubeGrid.WorldMatrix.Forward;
+                 _basisVecB = Me.CubeGrid.WorldMatrix.Right;
+                 _basisVecUp = Me.CubeGrid.WorldMatrix.Up;
+
+                alreadyRun = true;
             }
 
             //IGC

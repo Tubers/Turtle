@@ -358,3 +358,5 @@ healthchecksdb
 /Test/MDK/MDK.options.props
 /Test/MDK/Bootstrapper.cs
 /Test/Instructions.readme
+/ConsoleTest/Program.cs
+/ConsoleTest/ConsoleTest.csproj

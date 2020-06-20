@@ -23,8 +23,9 @@ namespace IngameScript
     {
         
         public Program()
-        {
-            
+        { 
+            nav =  GridTerminalSystem.GetBlockWithName("Navigation [t]") as IMyProgrammableBlock;
+
         }
 
         public void Save()
@@ -32,9 +33,12 @@ namespace IngameScript
           
         }
 
+        private IMyProgrammableBlock nav;
+        int count = 0;
+        private string TAG = "NAV";
         public void Main(string argument, UpdateType updateSource)
         {
-            
+            IGC.SendUnicastMessage(nav.EntityId, TAG, "HELLO WORLD! "+count++);
         }
     }
 }
