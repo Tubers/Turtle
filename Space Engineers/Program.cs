@@ -7,6 +7,7 @@ using System.Collections;
 using System.Linq;
 using System.Text;
 using System;
+using System.Runtime.Remoting.Metadata.W3cXsd2001;
 using VRage.Collections;
 using VRage.Game.Components;
 using VRage.Game.GUI.TextPanel;
@@ -16,7 +17,7 @@ using VRage.Game.ObjectBuilders.Definitions;
 using VRage.Game;
 using VRage;
 using VRageMath;
-    
+using VRageRender;
 
 
 namespace IngameScript
@@ -32,16 +33,15 @@ namespace IngameScript
             UP = 4,
             DOWN = 5
         }
-
-        
         //world
-        Vector3D[] _basis = new Vector3D[6];
-            Vector3D _origin;
+            Vector3D[] _basis = new Vector3D[6];
+            Vector3D _stationConnector;
         //IGC
             string _turtleInit = "TURTLE INIT";
             IMyBroadcastListener _turtleListenerInit;
+            long _turtleOperatorID;
         //state
-            //Vector3D _turtleLocation; // grid coord 
+            Vector3D _turtleLocation; // grid coord 
             Direction _rotationGoal;
         //flags
             bool _suspended = false;
@@ -49,11 +49,17 @@ namespace IngameScript
         //hardware
             IMyGyro gyro;
             IMyShipConnector connector;
-            IMyRemoteControl remote; 
-        //control
+            IMyRemoteControl remote;
+            //control
             IEnumerator<int> _stateMachine;
-            Queue<> _actions = new Queue<>();
-        // util
+            struct stateStruct
+            {
+                public Action state;
+                public Func<IEnumerator<int>> yieldAction;
+            }
+            Queue<stateStruct> _stateQueue = new Queue<stateStruct>();
+            stateStruct _currentState;
+            // util
             StringBuilder _messageBuilder = new StringBuilder();
             private MyIni _ini = new MyIni();
             int _runCount = 0;
@@ -68,6 +74,8 @@ namespace IngameScript
             IGC.UnicastListener.SetMessageCallback();
             _turtleListenerInit = IGC.RegisterBroadcastListener(_turtleInit);
             _turtleListenerInit.SetMessageCallback(_turtleInit);
+            var op = GridTerminalSystem.GetBlockWithName("Turtle Operator [t]") as IMyProgrammableBlock;
+            _turtleOperatorID = op.GetId();
             _messageBuilder.Append("IGC loaded.\n");
             // load program state
             if (_ini.TryParse(Storage))
@@ -78,13 +86,13 @@ namespace IngameScript
                 _basis[3] = -_basis[2];
                 Vector3D.TryParse(_ini.Get("Basis", "Up").ToString(), out _basis[4]);
                 _basis[5] = -_basis[4];
-                Vector3D.TryParse(_ini.Get("Basis", "Origin").ToString(), out _origin);
                 _initialized = true;
                 _messageBuilder.Append("Storage loaded.\nInitialized.\n");
             }
             // custom data reset - log info
             Me.CustomData = "\t\tPROGRAM LOG:\n\n" + _messageBuilder;
             Runtime.UpdateFrequency |= UpdateFrequency.Once;
+            _stateMachine = Idle();
         }
         public void Save()
         {
@@ -97,7 +105,6 @@ namespace IngameScript
                 _basis[3] = -_basis[2];
                 _ini.Set("Basis", "Up", _basis[4].ToString());
                 _basis[5] = -_basis[4];
-                _ini.Set("Basis", "Origin", _origin.ToString());
                 Storage = _ini.ToString();
                 Me.CustomData += _messageBuilder.ToString();
             }
@@ -112,8 +119,26 @@ namespace IngameScript
                 if (IGC.UnicastListener.HasPendingMessage)
                 {
                     var message = IGC.UnicastListener.AcceptMessage();
-                    //enqueue a method
-                }else if (_turtleListenerInit.IsActive)
+                    if (message.Source == _turtleOperatorID)
+                    {
+                        //enqueue a method
+                        string[] split = message.Data.ToString().Split(';');
+                        var toEnqueue = new stateStruct();
+                        var yieldAction = split[0];
+                        var state = split[1];
+                        switch (yieldAction)
+                        {
+                            case "rot":
+                                toEnqueue.yieldAction = Rotate;
+                                toEnqueue.state = () => _rotationGoal = (Direction) Int32.Parse(state);
+                                break;
+                            case "mov":
+                                break;
+                        }
+                        _stateQueue.Enqueue(toEnqueue);
+                    }
+                }
+                else if (_turtleListenerInit.IsActive)
                 {
                     HandleMessageInit();
                 }
@@ -131,28 +156,25 @@ namespace IngameScript
                 {
                     _messageBuilder.Append("\tRUN: \n");
 
-                    if (_stateMachine == null & _actions.Count>0)
+                    if (_stateQueue.Count > 0)
                     {
-                        var nextAction = _actions.Peek();
-                        _stateMachine = nextAction();
-
+                        _currentState = _stateQueue.Peek();
+                        _currentState.state();
+                        _stateMachine = _currentState.yieldAction();
                     }
-                    else if (_stateMachine == null & _actions.Count==0)
-                    {
+                    else
                         _stateMachine = Idle();
-                    }
-                    if (!_stateMachine.MoveNext() | _stateMachine.Current == 1)
+
+                    _stateMachine.MoveNext();
+
+                    if (_stateMachine.Current == 1) //completed yieldaction
                     {
                         _stateMachine.Dispose();
-                        _stateMachine = null;
-                        _actions.Dequeue();
+                        _stateQueue.Dequeue();
                     }
 
                 }//!_suspended & _initialized
             }
-
-            
-
 
             if (_runCount < 15 | ((_runCount % 60) == 0 & (Me.CustomData.Length < 2000)))
             {
@@ -161,17 +183,22 @@ namespace IngameScript
             _messageBuilder.Clear();
         }
 
-        public IEnumerator<int> Idle(Vector3D data)
+        public IEnumerator<int> Idle()
         {
-            // turn off hover thrusters
-            while (_actions.Count == 0)
+            // thrusters off
+            // send unicast to turtle op
+            while (true)
             {
+                //if (_stateQueue.Count > 0)
+                //{
+                //    thrusters on
+                //    yield return 1;
+                //}
                 yield return 0;
             }
-            // turn back on hover thrusters
-            yield return 1;
         }
-        public IEnumerator<int> Move(Vector3D data)
+
+        public IEnumerator<int> Move()
         {
             yield return 0;
             // ensure move successful 
@@ -179,7 +206,7 @@ namespace IngameScript
             yield return 1;
         }
 
-        public IEnumerator<int> Rotate(Vector3D data)
+        public IEnumerator<int> Rotate()
         {
             gyro.GyroOverride = true;
             gyro.Yaw = 0.3f;
@@ -213,7 +240,6 @@ namespace IngameScript
         }
 
 
-
         private void HandleMessageInit()
         {
             while (!_initialized | _turtleListenerInit.HasPendingMessage)
@@ -236,8 +262,8 @@ namespace IngameScript
                         Vector3D.TryParse(data, out _basis[4]);
                         _basis[5] = -_basis[4];
                         break;
-                    case "Origin":
-                        Vector3D.TryParse(data, out _origin);
+                    default:
+                        _messageBuilder.Append("_turtleListenerInit: Unknown\n");
                         break;
                 }
             }
@@ -256,9 +282,7 @@ namespace IngameScript
 
         public bool areVectorsValid()
         {
-            return
-                   _origin!=null & Vector3D.IsZero(_origin) &
-                   _basis[0]!=null & Vector3D.IsZero(_basis[0]) &  
+            return _basis[0]!=null & Vector3D.IsZero(_basis[0]) &  
                    _basis[2]!=null & Vector3D.IsZero(_basis[2]) &
                    _basis[4]!=null & Vector3D.IsZero(_basis[4]);
         }

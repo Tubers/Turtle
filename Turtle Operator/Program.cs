@@ -25,7 +25,6 @@ namespace IngameScript
         public Program()
         { 
             nav =  GridTerminalSystem.GetBlockWithName("Navigation [t]") as IMyProgrammableBlock;
-
         }
 
         public void Save()
