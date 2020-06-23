@@ -21,7 +21,18 @@ namespace IngameScript
 {
     partial class Program : MyGridProgram
     {
-        
+        enum Direction : int
+        {
+            APOS = 0,
+            ANEG = 1,
+            BPOS = 2,
+            BNEG = 3,
+            UP = 4,
+            DOWN = 5
+        }
+        long _navID;
+
+
         public Program()
         { 
             nav =  GridTerminalSystem.GetBlockWithName("Navigation [t]") as IMyProgrammableBlock;
