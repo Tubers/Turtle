@@ -47,7 +47,6 @@ namespace IngameScript
         //control
             IEnumerator<int> _stateMachine;
             Queue<stateStruct> _stateQueue = new Queue<stateStruct>();
-            stateStruct _currentState;
             struct stateStruct
             {
                 public Action state;
@@ -65,24 +64,27 @@ namespace IngameScript
 
             if ((updateSource & UpdateType.Once) == UpdateType.Once)
             {
-                Runtime.UpdateFrequency |= UpdateFrequency.Once;
+                Echo(_stateQueue.Count.ToString()); // test
                 if (!_suspended & _initialized)
                 {
                     _messageBuilder.Append("\tRUN: \n");
                     _runCount++;
                     _stateMachine.MoveNext();
                     var sCase = _stateMachine.Current;
+                    _messageBuilder.Append("qCount:" + _stateQueue.Count);
                     switch (sCase)
                     {
                         case 0: //state incomplete
                             break;
                         case 1: //state finished
                         case 2:
-                            if (sCase==1)
-                                _stateQueue.Dequeue();
                             _runCount = 0;
                             _stateMachine.Dispose();
                             _stateMachine = null;
+                            if (sCase == 1)
+                            {
+                                _stateQueue.Dequeue();
+                            }
                             if (_stateQueue.Count > 0)
                             {
                                 var next = _stateQueue.Peek();
@@ -95,11 +97,12 @@ namespace IngameScript
                             }
                             break;
                     }
-                    if (_runCount < 15 | ((_runCount % 60) == 0 & (Me.CustomData.Length < 2000)))
-                    {
-                        Me.CustomData += "\n" + _messageBuilder;
-                    }
                 }//!_suspended & _initialized
+                if (_runCount < 15 | ((_runCount % 60) == 0 & (Me.CustomData.Length < 2000)))
+                {
+                    Me.CustomData += "\n" + _messageBuilder;
+                }
+                Runtime.UpdateFrequency |= UpdateFrequency.Once;
                 return;
             }
 
@@ -107,7 +110,7 @@ namespace IngameScript
             if ((updateSource & UpdateType.IGC) == UpdateType.IGC)
             {
                 _messageBuilder.Append("UpdateType: IGC\n");
-                if (IGC.UnicastListener.HasPendingMessage)
+                while (IGC.UnicastListener.HasPendingMessage)
                 {
                     var message = IGC.UnicastListener.AcceptMessage();
                     if (message.Source == _turtleOperatorID)
@@ -120,17 +123,21 @@ namespace IngameScript
                         {
                             case "R": //Rotate
                                 toEnqueue.yieldAction = Rotate;
-                                toEnqueue.state = () => _rotationGoal = Int32.Parse(state);
+                                toEnqueue.state = () => _rotationGoal = int.Parse(state);
+                                _messageBuilder.Append("rotation "+ state +" \n");
                                 break;
                             case "F": //forward
                                 break;
                             case "M": //Move
                                 break;
                         }
+
+                        
                         _stateQueue.Enqueue(toEnqueue);
+                        _messageBuilder.Append("qCount:"+_stateQueue.Count);
                     }
                 }
-                else if (_turtleListenerInit.IsActive)
+                if (!_initialized)
                 {
                     HandleMessageInit();
                 }
@@ -141,34 +148,21 @@ namespace IngameScript
             {
                 _messageBuilder.Append("UpdateType: Trigger\n");
                 // sensor abrupt stop set _suspend
-                Me.CustomData += "\n" + _messageBuilder;
+                //Me.CustomData += "\n" + _messageBuilder;
             }
         }
+
         public IEnumerator<int> Idle()
         {
-            var thrusters = GridTerminalSystem.GetBlockGroupWithName("Hover thrust");
-            thrusters.GetBlocks(list);
-            foreach (IMyThrust thruster in list)
-            {
-                var setOff = thruster.GetActionWithName("OnOff_Off");
-                setOff.Apply(thruster);
-            }
-            yield return 2;
+            yield return 0;
             while (true)
             {
-                _messageBuilder.Append("IDLE\n");
                 if (_stateQueue.Count > 0)
                 {
-                    thrusters.GetBlocks(list);
-                    foreach (IMyThrust thruster in list)
-                    {
-                        var setOff = thruster.GetActionWithName("OnOff_On");
-                        setOff.Apply(thruster);
-                    }
-                    yield return 1;
+                    yield return 2;
                 }
                 else
-                    yield return 2;
+                    yield return 0;
             }
         }
 
@@ -180,28 +174,7 @@ namespace IngameScript
             yield return 1;
         }
 
-        public IEnumerator<int> forward() //uses rotationGoal
-        {
-            yield return 0;
-            remote.ClearWaypoints();
-            remote.SpeedLimit = 2.0f;
-            remote.FlightMode = FlightMode.OneWay;
-            var remotePos = remote.GetPosition();
-            var diff = remotePos - remote.CenterOfMass;
-            var wp = 2.5 * (_basis[_rotationGoal]) + remotePos + diff;
-            remote.AddWaypoint(wp, "forward");
-            var curPosition = remotePos;
-            while (Vector3D.DistanceSquared(curPosition, wp)> 2) // requires tweaking
-            {
-                remote.SetAutoPilotEnabled(true);
-                curPosition = remote.GetPosition();
-                yield return 0;
-            }
-            remote.SetAutoPilotEnabled(false);
-            // send unicast
-            yield return 1;
-        }
-
+        
         public IEnumerator<int> Rotate()
         {
             yield return 0;
@@ -212,6 +185,8 @@ namespace IngameScript
             double prevProg;
             bool reversed = false;
             var rot= _basis[_rotationGoal];
+            _messageBuilder.Append("Rotate\n");
+            _messageBuilder.Append(_rotationGoal+"\n");
             yield return 0;
 
             while (true)
@@ -227,7 +202,7 @@ namespace IngameScript
                     yield return 1;
                 }
                 //adjust
-                gyro.Yaw = (0.3f + (0.1f * (float) (1 - prog))) * (gyro.Yaw < 0 ? -1 : 1);
+                gyro.Yaw = (0.2f + (0.3f * (float) (1 - prog))) * (gyro.Yaw < 0 ? -1 : 1);
                 if (prog - prevProg < 0 & !reversed)
                 {
                     gyro.Yaw *= -1;

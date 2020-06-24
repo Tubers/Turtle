@@ -32,23 +32,23 @@ namespace IngameScript
         }
         long _navID;
 
-
         public Program()
-        { 
-            nav =  GridTerminalSystem.GetBlockWithName("Navigation [t]") as IMyProgrammableBlock;
-        }
-
-        public void Save()
         {
-          
+            nav = GridTerminalSystem.GetBlockWithName("Navigation [t]") as IMyProgrammableBlock;
+            _navID = nav.EntityId;
         }
 
-        private IMyProgrammableBlock nav;
-        int count = 0;
-        private string TAG = "NAV";
+        IMyProgrammableBlock nav;
+        string TAG = "NAV";
+
+        private int run = 0;
         public void Main(string argument, UpdateType updateSource)
         {
-            IGC.SendUnicastMessage(nav.EntityId, TAG, "HELLO WORLD! "+count++);
+            
+            IGC.SendUnicastMessage(_navID, TAG, "R;" + run);
+            Echo("unicast sent "+run);
+            run=run++%4;
+            
         }
     }
 }
