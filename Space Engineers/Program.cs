@@ -173,8 +173,28 @@ namespace IngameScript
             // tell turtle operator of move
             yield return 1;
         }
+        public IEnumerator<int> forward() //uses rotationGoal
+        {
+            yield return 0;
+            remote.ClearWaypoints();
+            remote.SpeedLimit = 2.0f;
+            remote.FlightMode = FlightMode.OneWay;
+            var remotePos = remote.GetPosition();
+            var diff = remotePos - remote.CenterOfMass;
+            var wp = 2.5 * (_basis[_rotationGoal]) + remotePos + diff;
+            remote.AddWaypoint(wp, "forward");
+            var curPosition = remotePos;
+            while (Vector3D.DistanceSquared(curPosition, wp) > 2) // requires tweaking
+            {
+                remote.SetAutoPilotEnabled(true);
+                curPosition = remote.GetPosition();
+                yield return 0;
+            }
+            remote.SetAutoPilotEnabled(false);
+            // send unicast
+            yield return 1;
+        }
 
-        
         public IEnumerator<int> Rotate()
         {
             yield return 0;
